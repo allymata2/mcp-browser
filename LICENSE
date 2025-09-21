@@ -1,16 +1,30 @@
-MIT License
+Non-Commercial License
 
 Copyright (c) 2024 MCP Browser
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+to use, copy, modify, merge, publish, and distribute the Software, subject to
+the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+2. COMMERCIAL USE IS STRICTLY PROHIBITED. This software may not be used for
+   any commercial purposes, including but not limited to:
+   - Commercial software development
+   - Commercial services or products
+   - Commercial consulting or training
+   - Any use that generates revenue or profit
+
+3. This software is intended for:
+   - Personal use
+   - Educational purposes
+   - Open source projects
+   - Research and development
+
+4. For commercial licensing, please contact the author.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,

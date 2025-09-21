@@ -21,17 +21,20 @@ A Model Context Protocol (MCP) server that provides headless browser automation 
 ## Installation
 
 1. Clone the repository:
+
 ```bash
 git clone https://github.com/yourusername/mcp-browser.git
 cd mcp-browser
 ```
 
 2. Install dependencies:
+
 ```bash
 npm install
 ```
 
 3. Install Playwright browsers:
+
 ```bash
 npm run install-browsers
 ```
@@ -48,37 +51,42 @@ npm run build
 
 This creates the `dist/index.js` file that will be used by the MCP server.
 
-
-
 ### Available Tools
 
 #### Browser Navigation
+
 - `browser_navigate`: Navigate to a URL with configurable wait conditions
 - `browser_get_page_info`: Get current page information (URL, title, viewport)
 
 #### Element Interaction
+
 - `browser_click`: Click on elements using CSS selectors
 - `browser_type`: Type text into form fields
 - `browser_wait_for_element`: Wait for elements to appear
 - `browser_fill_form`: Fill out forms with multiple fields
 
 #### Content Extraction
+
 - `browser_extract_text`: Extract text content from elements
 - `browser_screenshot`: Take screenshots of pages or elements
 
 #### Page Manipulation
+
 - `browser_scroll`: Scroll pages in different directions
 - `browser_execute_script`: Execute custom JavaScript
 - `browser_mobile_emulate`: Emulate mobile devices
 
 #### File Operations
+
 - `browser_download_file`: Download files from web pages
 - `browser_create_pdf`: Generate PDFs from web pages
 
 #### Network Control
+
 - `browser_intercept_requests`: Monitor and mock network requests
 
 #### Session Management
+
 - `browser_close_session`: Close browser sessions
 
 ## Configuration
@@ -88,6 +96,7 @@ This creates the `dist/index.js` file that will be used by the MCP server.
 Add the following to your MCP client configuration file:
 
 #### Production Configuration
+
 ```json
 {
   "mcpServers": {
@@ -106,6 +115,7 @@ Add the following to your MCP client configuration file:
 **Important**: Make sure to run `npm run build` before using this configuration.
 
 #### Development Configuration
+
 ```json
 {
   "mcpServers": {
@@ -122,16 +132,19 @@ Add the following to your MCP client configuration file:
 ```
 
 ### Browser Types
+
 - `chromium`: Default browser (recommended)
 - `firefox`: Mozilla Firefox
 - `webkit`: Safari engine
 
 ### Session Management
+
 - Default session ID: `default`
 - Multiple sessions supported with unique IDs
 - Sessions persist until explicitly closed
 
 ### Viewport Configuration
+
 - Default: 1280x720
 - Customizable per session
 - Mobile emulation includes device-specific viewports
@@ -139,6 +152,7 @@ Add the following to your MCP client configuration file:
 ## Examples
 
 ### Basic Navigation
+
 ```json
 {
   "name": "browser_navigate",
@@ -151,6 +165,7 @@ Add the following to your MCP client configuration file:
 ```
 
 ### Element Interaction
+
 ```json
 {
   "name": "browser_click",
@@ -162,6 +177,7 @@ Add the following to your MCP client configuration file:
 ```
 
 ### Form Filling
+
 ```json
 {
   "name": "browser_fill_form",
@@ -176,6 +192,7 @@ Add the following to your MCP client configuration file:
 ```
 
 ### Screenshot Capture
+
 ```json
 {
   "name": "browser_screenshot",
@@ -187,6 +204,7 @@ Add the following to your MCP client configuration file:
 ```
 
 ### Mobile Emulation
+
 ```json
 {
   "name": "browser_mobile_emulate",
@@ -200,11 +218,13 @@ Add the following to your MCP client configuration file:
 ## Development
 
 ### Building for Production
+
 ```bash
 npm run build
 ```
 
 ### Running in Development Mode
+
 ```bash
 npm run dev
 ```
@@ -212,10 +232,13 @@ npm run dev
 **Note**: This is for development only. For production use, always build the project first and use the production MCP server configuration.
 
 ### TypeScript Configuration
+
 The project uses TypeScript with strict type checking. Configuration is in `tsconfig.json`.
 
 ### Linting
+
 ESLint is configured with TypeScript support:
+
 ```bash
 npx eslint index.ts
 ```
@@ -223,16 +246,19 @@ npx eslint index.ts
 ## Architecture
 
 ### Core Components
+
 - **MCPBrowserServer**: Main server class handling MCP protocol
 - **BrowserSession**: Manages individual browser sessions
 - **Tool Handlers**: Individual handlers for each browser operation
 
 ### Session Management
+
 - Sessions are stored in a Map with unique IDs
 - Each session contains browser, context, and page instances
 - Sessions are automatically cleaned up on server shutdown
 
 ### Error Handling
+
 - Comprehensive error handling for all browser operations
 - Graceful degradation when operations fail
 - Detailed error messages returned to clients
@@ -247,12 +273,14 @@ npx eslint index.ts
 ## Browser Support
 
 ### Supported Devices for Mobile Emulation
+
 - iPhone 12/13/14
 - iPad
 - Samsung Galaxy S21
 - Pixel 5
 
 ### Supported Orientations
+
 - Portrait
 - Landscape
 
@@ -273,6 +301,7 @@ npx eslint index.ts
 4. **Memory Usage**: Close unused sessions to free up resources
 
 ### Debug Mode
+
 Enable debug logging by setting environment variables or modifying the server configuration.
 
 ## Contributing
@@ -285,7 +314,9 @@ Enable debug logging by setting environment variables or modifying the server co
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+Non-Commercial License - see [LICENSE](LICENSE) file for details.
+
+**Important**: This software is free for personal, educational, and open source use. Commercial use is strictly prohibited without explicit permission from the author. For commercial licensing inquiries, please contact the author.
 
 ## Support
 
@@ -298,8 +329,9 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Changelog
 
 ### v0.1.0
+
 - Initial release
 - Basic browser automation capabilities
 - XSS scanning functionality
 - Network request logging
-- Multi-browser support (Chromium, Firefox, WebKit) 
+- Multi-browser support (Chromium, Firefox, WebKit)
