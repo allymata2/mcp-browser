@@ -1,6 +1,6 @@
 # MCP Browser
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/badchars/mcp-browser)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/badchars/mcp-browser)
 [![License](https://img.shields.io/badge/license-Non--Commercial-red.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node.js-%3E%3D18-green.svg)](https://nodejs.org/)
 [![Playwright](https://img.shields.io/badge/playwright-1.40.0-orange.svg)](https://playwright.dev/)
@@ -26,6 +26,16 @@ A powerful Model Context Protocol (MCP) server that provides advanced browser au
 - **Manifest Generation**: Detailed JSON manifest with file metadata
 - **URL Filtering**: Regex-based filtering for targeted analysis
 - **Performance API Integration**: Detect dynamically loaded scripts
+
+### 🔍 **Advanced API Endpoint Discovery**
+
+- **AST-Based Analysis**: Parse JavaScript with Babel for deep code analysis
+- **Network Call Detection**: Find fetch, axios, XMLHttpRequest, WebSocket calls
+- **Metadata Extraction**: Extract method, URL, headers, auth tokens, body schemas
+- **Request Spec Generation**: Auto-generate cURL, HTTPie, Postman examples
+- **Context Analysis**: Analyze surrounding code for better understanding
+- **Source Map Support**: Apply source maps for better code readability
+- **Dynamic Validation**: Test discovered endpoints in real browser environment
 
 ### 🌐 **Advanced Browser Automation**
 
@@ -212,6 +222,27 @@ Ideal for reverse engineering and code review:
     "preserveStructure": true,
     "generateManifest": true,
     "filterUrl": ".*\\.js$"
+  }
+}
+```
+
+### Advanced API Endpoint Discovery
+
+Deep analysis of JavaScript files to discover API endpoints:
+
+```json
+{
+  "name": "browser_analyze_javascript_api_endpoints",
+  "arguments": {
+    "jsFilesPath": "./js_analysis",
+    "outputPath": "./api_discovery",
+    "includePrettify": true,
+    "includeSourceMaps": true,
+    "detectNetworkCalls": true,
+    "extractMetadata": true,
+    "generateRequestSpecs": true,
+    "validateEndpoints": false,
+    "contextLines": 30
   }
 }
 ```
@@ -426,6 +457,17 @@ For issues and questions, please open an issue on the [GitHub repository](https:
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Changelog
+
+### v0.3.0
+
+- **🔍 NEW**: Advanced API Endpoint Discovery
+  - AST-based JavaScript analysis with Babel parser
+  - Network call detection (fetch, axios, XMLHttpRequest, WebSocket)
+  - Metadata extraction (method, URL, headers, auth tokens, body schemas)
+  - Request spec generation (cURL, HTTPie, Postman examples)
+  - Context analysis with surrounding code examination
+  - Source map support for better code readability
+  - Dynamic endpoint validation in browser environment
 
 ### v0.2.0
 

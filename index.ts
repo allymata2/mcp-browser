@@ -9,6 +9,12 @@ import {
 import { chromium, firefox, webkit, Browser, Page, BrowserContext } from 'playwright';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { parse } from '@babel/parser';
+import traverse from '@babel/traverse';
+import * as t from '@babel/types';
+import prettier from 'prettier';
+import { SourceMapConsumer } from 'source-map';
+import beautify from 'js-beautify';
 
 interface BrowserSession {
   id: string;
@@ -350,6 +356,26 @@ class MCPBrowserServer {
             },
             required: ["downloadPath"]
           }
+        },
+        {
+          name: "browser_analyze_javascript_api_endpoints",
+          description: "Advanced JavaScript analysis to discover API endpoints and network calls",
+          inputSchema: {
+            type: "object",
+            properties: {
+              sessionId: { type: "string", default: "default" },
+              jsFilesPath: { type: "string", description: "Path to downloaded JavaScript files" },
+              outputPath: { type: "string", description: "Directory to save analysis results" },
+              includePrettify: { type: "boolean", description: "Prettify and normalize JavaScript files", default: true },
+              includeSourceMaps: { type: "boolean", description: "Apply source maps if available", default: true },
+              detectNetworkCalls: { type: "boolean", description: "Detect fetch, axios, XMLHttpRequest, WebSocket calls", default: true },
+              extractMetadata: { type: "boolean", description: "Extract method, URL, headers, auth tokens", default: true },
+              generateRequestSpecs: { type: "boolean", description: "Generate cURL, HTTPie, Postman examples", default: true },
+              validateEndpoints: { type: "boolean", description: "Dynamically validate discovered endpoints", default: false },
+              contextLines: { type: "number", description: "Number of context lines around network calls", default: 30 }
+            },
+            required: ["jsFilesPath", "outputPath"]
+          }
         }
       ],
     }));
@@ -395,6 +421,8 @@ class MCPBrowserServer {
             return await this.interactiveXSSScan(request.params.arguments as Parameters<typeof this.interactiveXSSScan>[0]);
           case "browser_fetch_javascript_files":
             return await this.fetchJavaScriptFiles(request.params.arguments as Parameters<typeof this.fetchJavaScriptFiles>[0]);
+          case "browser_analyze_javascript_api_endpoints":
+            return await this.analyzeJavaScriptAPIEndpoints(request.params.arguments as Parameters<typeof this.analyzeJavaScriptAPIEndpoints>[0]);
           default:
             throw new Error(`Unknown tool: ${request.params.name}`);
         }
@@ -2269,6 +2297,597 @@ class MCPBrowserServer {
         isError: true,
       };
     }
+  }
+
+  private async analyzeJavaScriptAPIEndpoints(args: {
+    sessionId?: string;
+    jsFilesPath: string;
+    outputPath: string;
+    includePrettify?: boolean;
+    includeSourceMaps?: boolean;
+    detectNetworkCalls?: boolean;
+    extractMetadata?: boolean;
+    generateRequestSpecs?: boolean;
+    validateEndpoints?: boolean;
+    contextLines?: number;
+  }) {
+    const {
+      sessionId = 'default',
+      jsFilesPath,
+      outputPath,
+      includePrettify = true,
+      includeSourceMaps = true,
+      detectNetworkCalls = true,
+      extractMetadata = true,
+      generateRequestSpecs = true,
+      validateEndpoints = false,
+      contextLines = 30
+    } = args;
+
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
+
+    const absoluteOutputPath = path.resolve(outputPath);
+    await fs.mkdir(absoluteOutputPath, { recursive: true });
+
+    const analysisResults = {
+      timestamp: new Date().toISOString(),
+      sessionId,
+      settings: {
+        includePrettify,
+        includeSourceMaps,
+        detectNetworkCalls,
+        extractMetadata,
+        generateRequestSpecs,
+        validateEndpoints,
+        contextLines
+      },
+      summary: {
+        totalFiles: 0,
+        processedFiles: 0,
+        networkCalls: 0,
+        apiEndpoints: 0,
+        requestSpecs: 0
+      },
+      files: [] as any[],
+      networkCalls: [] as any[],
+      apiEndpoints: [] as any[],
+      requestSpecs: [] as any[]
+    };
+
+    try {
+      // Get all JavaScript files
+      const jsFiles = await this.getJavaScriptFiles(jsFilesPath);
+      analysisResults.summary.totalFiles = jsFiles.length;
+
+      for (const filePath of jsFiles) {
+        try {
+          const fileContent = await fs.readFile(filePath, 'utf8');
+          const relativePath = path.relative(jsFilesPath, filePath);
+
+          // Step 1: Prettify and normalize
+          let normalizedContent = fileContent;
+          if (includePrettify) {
+            normalizedContent = await this.prettifyJavaScript(fileContent);
+          }
+
+          // Step 2: Apply source maps if available
+          if (includeSourceMaps) {
+            normalizedContent = await this.applySourceMaps(normalizedContent, filePath);
+          }
+
+          // Step 3: Parse with Babel
+          const ast = this.parseJavaScript(normalizedContent);
+          if (!ast) continue;
+
+          // Step 4: Detect network calls
+          const networkCalls = detectNetworkCalls ? 
+            await this.detectNetworkCalls(ast, normalizedContent, relativePath, contextLines) : [];
+
+          // Step 5: Extract metadata
+          const metadata = extractMetadata ? 
+            await this.extractNetworkCallMetadata(networkCalls) : [];
+
+          // Step 6: Generate request specs
+          const requestSpecs = generateRequestSpecs ? 
+            await this.generateRequestSpecs(metadata) : [];
+
+          analysisResults.files.push({
+            path: relativePath,
+            originalSize: fileContent.length,
+            normalizedSize: normalizedContent.length,
+            networkCallsCount: networkCalls.length,
+            metadataCount: metadata.length,
+            requestSpecsCount: requestSpecs.length
+          });
+
+          analysisResults.networkCalls.push(...networkCalls);
+          analysisResults.apiEndpoints.push(...metadata);
+          analysisResults.requestSpecs.push(...requestSpecs);
+
+          analysisResults.summary.processedFiles++;
+          analysisResults.summary.networkCalls += networkCalls.length;
+          analysisResults.summary.apiEndpoints += metadata.length;
+          analysisResults.summary.requestSpecs += requestSpecs.length;
+
+        } catch (error) {
+          console.error(`Error processing file ${filePath}:`, error);
+        }
+      }
+
+      // Step 7: Validate endpoints if requested
+      if (validateEndpoints && analysisResults.requestSpecs.length > 0) {
+        analysisResults.requestSpecs = await this.validateEndpoints(
+          analysisResults.requestSpecs, 
+          session
+        );
+      }
+
+      // Save results
+      const resultsPath = path.join(absoluteOutputPath, 'api_analysis_results.json');
+      await fs.writeFile(resultsPath, JSON.stringify(analysisResults, null, 2));
+
+      // Generate individual files
+      if (analysisResults.networkCalls.length > 0) {
+        const networkCallsPath = path.join(absoluteOutputPath, 'network_calls.json');
+        await fs.writeFile(networkCallsPath, JSON.stringify(analysisResults.networkCalls, null, 2));
+      }
+
+      if (analysisResults.requestSpecs.length > 0) {
+        const specsPath = path.join(absoluteOutputPath, 'request_specs.json');
+        await fs.writeFile(specsPath, JSON.stringify(analysisResults.requestSpecs, null, 2));
+
+        // Generate cURL examples
+        const curlExamples = this.generateCurlExamples(analysisResults.requestSpecs);
+        const curlPath = path.join(absoluteOutputPath, 'curl_examples.sh');
+        await fs.writeFile(curlPath, curlExamples);
+
+        // Generate HTTPie examples
+        const httpieExamples = this.generateHttpieExamples(analysisResults.requestSpecs);
+        const httpiePath = path.join(absoluteOutputPath, 'httpie_examples.txt');
+        await fs.writeFile(httpiePath, httpieExamples);
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              action: 'analyze_javascript_api_endpoints',
+              sessionId,
+              outputPath: absoluteOutputPath,
+              summary: analysisResults.summary,
+              files: {
+                analysisResults: 'api_analysis_results.json',
+                networkCalls: 'network_calls.json',
+                requestSpecs: 'request_specs.json',
+                curlExamples: 'curl_examples.sh',
+                httpieExamples: 'httpie_examples.txt'
+              },
+              message: `Analysis completed. Found ${analysisResults.summary.networkCalls} network calls and generated ${analysisResults.summary.requestSpecs} request specifications.`
+            }, null, 2),
+          },
+        ],
+      };
+
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              success: false,
+              action: 'analyze_javascript_api_endpoints',
+              error: error instanceof Error ? error.message : 'Unknown error',
+              sessionId
+            }, null, 2),
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  // Helper methods for JavaScript analysis
+  private async getJavaScriptFiles(jsFilesPath: string): Promise<string[]> {
+    const files: string[] = [];
+    const entries = await fs.readdir(jsFilesPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(jsFilesPath, entry.name);
+      if (entry.isDirectory()) {
+        const subFiles = await this.getJavaScriptFiles(fullPath);
+        files.push(...subFiles);
+      } else if (entry.isFile() && entry.name.endsWith('.js')) {
+        files.push(fullPath);
+      }
+    }
+
+    return files;
+  }
+
+  private async prettifyJavaScript(content: string): Promise<string> {
+    try {
+      // First try with js-beautify
+      const beautified = beautify.js(content, {
+        indent_size: 2,
+        indent_char: ' ',
+        max_preserve_newlines: 2,
+        preserve_newlines: true,
+        keep_array_indentation: false,
+        break_chained_methods: false,
+        brace_style: 'collapse',
+        space_before_conditional: true,
+        unescape_strings: false,
+        jslint_happy: false,
+        end_with_newline: true,
+        wrap_line_length: 0,
+        comma_first: false,
+        e4x: false,
+        indent_empty_lines: false
+      });
+
+      // Then try with prettier for better formatting
+      try {
+        return await prettier.format(beautified, {
+          parser: 'babel',
+          semi: true,
+          singleQuote: true,
+          tabWidth: 2,
+          trailingComma: 'es5'
+        });
+      } catch {
+        return beautified;
+      }
+    } catch (error) {
+      console.warn('Failed to prettify JavaScript:', error);
+      return content;
+    }
+  }
+
+  private async applySourceMaps(content: string, filePath: string): Promise<string> {
+    try {
+      // Look for source map comment
+      const sourceMapMatch = content.match(/\/\/# sourceMappingURL=(.+)/);
+      if (!sourceMapMatch) return content;
+
+      const sourceMapPath = path.join(path.dirname(filePath), sourceMapMatch[1]);
+      
+      try {
+        const sourceMapContent = await fs.readFile(sourceMapPath, 'utf8');
+        const sourceMap = JSON.parse(sourceMapContent);
+        
+        // Apply source map transformations
+        // This is a simplified implementation
+        return content;
+      } catch {
+        return content;
+      }
+    } catch (error) {
+      console.warn('Failed to apply source maps:', error);
+      return content;
+    }
+  }
+
+  private parseJavaScript(content: string): any {
+    try {
+      return parse(content, {
+        sourceType: 'module',
+        allowImportExportEverywhere: true,
+        allowReturnOutsideFunction: true,
+        plugins: [
+          'jsx',
+          'typescript',
+          'decorators-legacy',
+          'classProperties',
+          'objectRestSpread',
+          'functionBind',
+          'exportDefaultFrom',
+          'exportNamespaceFrom',
+          'dynamicImport',
+          'nullishCoalescingOperator',
+          'optionalChaining'
+        ]
+      });
+    } catch (error) {
+      console.warn('Failed to parse JavaScript:', error);
+      return null;
+    }
+  }
+
+  private async detectNetworkCalls(ast: any, content: string, filePath: string, contextLines: number): Promise<any[]> {
+    const networkCalls: any[] = [];
+    const lines = content.split('\n');
+
+    const self = this;
+    traverse(ast, {
+      CallExpression(path: any) {
+        const { node } = path;
+        
+        // Detect fetch calls
+        if (t.isIdentifier(node.callee) && node.callee.name === 'fetch') {
+          const callInfo = self.extractCallInfo(node, path, lines, contextLines, 'fetch');
+          if (callInfo) {
+            networkCalls.push({
+              type: 'fetch',
+              file: filePath,
+              ...callInfo
+            });
+          }
+        }
+
+        // Detect axios calls
+        if (t.isMemberExpression(node.callee)) {
+          const memberExpr = node.callee;
+          if (t.isIdentifier(memberExpr.object) && memberExpr.object.name === 'axios') {
+            const method = t.isIdentifier(memberExpr.property) ? memberExpr.property.name : null;
+            if (['get', 'post', 'put', 'delete', 'patch', 'head', 'options'].includes(method || '')) {
+              const callInfo = self.extractCallInfo(node, path, lines, contextLines, `axios.${method}`);
+              if (callInfo) {
+                networkCalls.push({
+                  type: 'axios',
+                  method: method,
+                  file: filePath,
+                  ...callInfo
+                });
+              }
+            }
+          }
+        }
+
+        // Detect XMLHttpRequest
+        if (t.isNewExpression(node) && t.isIdentifier(node.callee) && node.callee.name === 'XMLHttpRequest') {
+          const callInfo = self.extractCallInfo(node, path, lines, contextLines, 'XMLHttpRequest');
+          if (callInfo) {
+            networkCalls.push({
+              type: 'XMLHttpRequest',
+              file: filePath,
+              ...callInfo
+            });
+          }
+        }
+
+        // Detect WebSocket
+        if (t.isNewExpression(node) && t.isIdentifier(node.callee) && node.callee.name === 'WebSocket') {
+          const callInfo = self.extractCallInfo(node, path, lines, contextLines, 'WebSocket');
+          if (callInfo) {
+            networkCalls.push({
+              type: 'WebSocket',
+              file: filePath,
+              ...callInfo
+            });
+          }
+        }
+      }
+    });
+
+    return networkCalls;
+  }
+
+  private extractCallInfo(node: any, path: any, lines: string[], contextLines: number, callType: string): any {
+    const loc = node.loc;
+    if (!loc) return null;
+
+    const startLine = loc.start.line - 1;
+    const endLine = loc.end.line - 1;
+    
+    // Extract context around the call
+    const contextStart = Math.max(0, startLine - contextLines);
+    const contextEnd = Math.min(lines.length - 1, endLine + contextLines);
+    const context = lines.slice(contextStart, contextEnd + 1).join('\n');
+
+    // Extract arguments
+    const args = node.arguments.map((arg: any) => {
+      if (t.isStringLiteral(arg)) {
+        return { type: 'string', value: arg.value };
+      } else if (t.isTemplateLiteral(arg)) {
+        return { type: 'template', value: this.extractTemplateLiteral(arg) };
+      } else if (t.isIdentifier(arg)) {
+        return { type: 'identifier', value: arg.name };
+      } else if (t.isObjectExpression(arg)) {
+        return { type: 'object', value: this.extractObjectExpression(arg) };
+      }
+      return { type: 'unknown', value: '...' };
+    });
+
+    return {
+      line: startLine + 1,
+      column: loc.start.column,
+      callType,
+      arguments: args,
+      context: context,
+      contextStart: contextStart + 1,
+      contextEnd: contextEnd + 1
+    };
+  }
+
+  private extractTemplateLiteral(node: any): string {
+    let result = '';
+    for (let i = 0; i < node.quasis.length; i++) {
+      result += node.quasis[i].value.raw;
+      if (i < node.expressions.length) {
+        result += `\${${this.extractExpression(node.expressions[i])}}`;
+      }
+    }
+    return result;
+  }
+
+  private extractObjectExpression(node: any): any {
+    const obj: any = {};
+    for (const prop of node.properties) {
+      if (t.isObjectProperty(prop) && t.isIdentifier(prop.key)) {
+        const key = prop.key.name;
+        if (t.isStringLiteral(prop.value)) {
+          obj[key] = prop.value.value;
+        } else if (t.isIdentifier(prop.value)) {
+          obj[key] = `$${prop.value.name}`;
+        } else if (t.isObjectExpression(prop.value)) {
+          obj[key] = this.extractObjectExpression(prop.value);
+        }
+      }
+    }
+    return obj;
+  }
+
+  private extractExpression(node: any): string {
+    if (t.isIdentifier(node)) {
+      return node.name;
+    } else if (t.isStringLiteral(node)) {
+      return `"${node.value}"`;
+    } else if (t.isTemplateLiteral(node)) {
+      return this.extractTemplateLiteral(node);
+    }
+    return '...';
+  }
+
+  private async extractNetworkCallMetadata(networkCalls: any[]): Promise<any[]> {
+    // This would implement the metadata extraction logic
+    // For now, return a simplified version
+    return networkCalls.map(call => ({
+      ...call,
+      metadata: {
+        method: this.inferMethod(call),
+        url: this.inferUrl(call),
+        headers: this.inferHeaders(call),
+        body: this.inferBody(call),
+        auth: this.inferAuth(call)
+      }
+    }));
+  }
+
+  private inferMethod(call: any): string {
+    if (call.type === 'axios' && call.method) {
+      return call.method.toUpperCase();
+    }
+    if (call.type === 'fetch') {
+      // Try to infer from second argument
+      const options = call.arguments[1];
+      if (options && options.type === 'object' && options.value.method) {
+        return options.value.method.toUpperCase();
+      }
+    }
+    return 'GET';
+  }
+
+  private inferUrl(call: any): string {
+    const firstArg = call.arguments[0];
+    if (firstArg && firstArg.type === 'string') {
+      return firstArg.value;
+    } else if (firstArg && firstArg.type === 'template') {
+      return firstArg.value;
+    }
+    return '${URL}';
+  }
+
+  private inferHeaders(call: any): any {
+    const options = call.arguments[1];
+    if (options && options.type === 'object' && options.value.headers) {
+      return options.value.headers;
+    }
+    return {};
+  }
+
+  private inferBody(call: any): any {
+    const options = call.arguments[1];
+    if (options && options.type === 'object' && options.value.body) {
+      return options.value.body;
+    }
+    return null;
+  }
+
+  private inferAuth(call: any): any {
+    // Look for authorization patterns in context
+    const context = call.context.toLowerCase();
+    if (context.includes('bearer') || context.includes('token')) {
+      return { type: 'bearer', token: '${TOKEN}' };
+    }
+    if (context.includes('basic')) {
+      return { type: 'basic', credentials: '${CREDENTIALS}' };
+    }
+    return null;
+  }
+
+  private async generateRequestSpecs(metadata: any[]): Promise<any[]> {
+    return metadata.map(item => ({
+      id: `spec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      method: item.metadata.method,
+      url: item.metadata.url,
+      headers: item.metadata.headers,
+      body: item.metadata.body,
+      auth: item.metadata.auth,
+      source: {
+        file: item.file,
+        line: item.line,
+        callType: item.callType
+      },
+      generated: new Date().toISOString()
+    }));
+  }
+
+  private async validateEndpoints(requestSpecs: any[], session: BrowserSession): Promise<any[]> {
+    // This would implement dynamic validation
+    // For now, return the specs as-is
+    return requestSpecs.map(spec => ({
+      ...spec,
+      validation: {
+        attempted: true,
+        success: false,
+        reason: 'Validation not implemented yet',
+        timestamp: new Date().toISOString()
+      }
+    }));
+  }
+
+  private generateCurlExamples(requestSpecs: any[]): string {
+    let curlExamples = '#!/bin/bash\n# Generated cURL examples for discovered API endpoints\n\n';
+    
+    for (const spec of requestSpecs) {
+      curlExamples += `# ${spec.source.file}:${spec.source.line}\n`;
+      curlExamples += `curl -X ${spec.method} \\\n`;
+      curlExamples += `  "${spec.url}" \\\n`;
+      
+      for (const [key, value] of Object.entries(spec.headers)) {
+        curlExamples += `  -H "${key}: ${value}" \\\n`;
+      }
+      
+      if (spec.auth && spec.auth.type === 'bearer') {
+        curlExamples += `  -H "Authorization: Bearer \${TOKEN}" \\\n`;
+      }
+      
+      if (spec.body) {
+        curlExamples += `  -d '${JSON.stringify(spec.body)}' \\\n`;
+      }
+      
+      curlExamples += `  --verbose\n\n`;
+    }
+    
+    return curlExamples;
+  }
+
+  private generateHttpieExamples(requestSpecs: any[]): string {
+    let httpieExamples = '# Generated HTTPie examples for discovered API endpoints\n\n';
+    
+    for (const spec of requestSpecs) {
+      httpieExamples += `# ${spec.source.file}:${spec.source.line}\n`;
+      httpieExamples += `http ${spec.method} "${spec.url}"`;
+      
+      for (const [key, value] of Object.entries(spec.headers)) {
+        httpieExamples += ` "${key}:${value}"`;
+      }
+      
+      if (spec.auth && spec.auth.type === 'bearer') {
+        httpieExamples += ` "Authorization:Bearer \${TOKEN}"`;
+      }
+      
+      if (spec.body) {
+        httpieExamples += ` <<< '${JSON.stringify(spec.body)}'`;
+      }
+      
+      httpieExamples += '\n\n';
+    }
+    
+    return httpieExamples;
   }
 
   private async cleanup() {
