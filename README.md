@@ -1,9 +1,31 @@
 # MCP Browser
 
-A Model Context Protocol (MCP) server that provides headless browser automation capabilities using Playwright. This server allows AI assistants to control web browsers programmatically through a standardized MCP interface.
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/badchars/mcp-browser)
+[![License](https://img.shields.io/badge/license-Non--Commercial-red.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node.js-%3E%3D18-green.svg)](https://nodejs.org/)
+[![Playwright](https://img.shields.io/badge/playwright-1.40.0-orange.svg)](https://playwright.dev/)
 
-## Features
+A powerful Model Context Protocol (MCP) server that provides advanced browser automation capabilities using Playwright. This server enables AI assistants to control web browsers programmatically through a standardized MCP interface, with specialized features for **JavaScript analysis** and **XSS vulnerability scanning**.
 
+> 🔒 **Perfect for Security Researchers, Penetration Testers, and Web Application Analysts**
+
+## 🚀 Key Features
+
+### 🔍 **Security Analysis & XSS Scanning**
+- **Interactive XSS Scanner**: Automatic detection and testing of XSS vulnerabilities
+- **Comprehensive XSS Detection**: Scans inline scripts, external scripts, HTML attributes, URL parameters, and form inputs
+- **Proof of Concept Generation**: Automatic PoC HTTP requests for confirmed vulnerabilities
+- **Alert Detection**: Real-time alert popup detection during XSS testing
+- **Detailed Vulnerability Reports**: JSON reports with severity levels and remediation suggestions
+
+### 📁 **JavaScript Files Analysis**
+- **Complete JS Fetching**: Download all JavaScript files (external, inline, dynamic)
+- **Smart File Organization**: Preserve directory structure from URLs
+- **Manifest Generation**: Detailed JSON manifest with file metadata
+- **URL Filtering**: Regex-based filtering for targeted analysis
+- **Performance API Integration**: Detect dynamically loaded scripts
+
+### 🌐 **Advanced Browser Automation**
 - **Multi-browser Support**: Chromium, Firefox, and WebKit browsers
 - **Session Management**: Multiple browser sessions with unique IDs
 - **Navigation**: Navigate to URLs with configurable wait conditions
@@ -149,6 +171,60 @@ Add the following to your MCP client configuration file:
 - Default: 1280x720
 - Customizable per session
 - Mobile emulation includes device-specific viewports
+
+## 🔒 Security Analysis Use Cases
+
+### XSS Vulnerability Scanning
+Perfect for penetration testers and security researchers:
+
+```json
+{
+  "name": "browser_interactive_xss_scan",
+  "arguments": {
+    "sessionId": "security_test",
+    "scanScripts": true,
+    "scanAttributes": true,
+    "scanUrls": true,
+    "scanForms": true,
+    "autoTestPoC": true,
+    "waitForAlert": 3000,
+    "outputFile": "./xss_scan_results.json"
+  }
+}
+```
+
+### JavaScript Code Analysis
+Ideal for reverse engineering and code review:
+
+```json
+{
+  "name": "browser_fetch_javascript_files",
+  "arguments": {
+    "downloadPath": "./js_analysis",
+    "includeInlineScripts": true,
+    "includeExternalScripts": true,
+    "includeDynamicScripts": true,
+    "preserveStructure": true,
+    "generateManifest": true,
+    "filterUrl": ".*\\.js$"
+  }
+}
+```
+
+### Network Traffic Monitoring
+Monitor and analyze web application behavior:
+
+```json
+{
+  "name": "browser_log_network_requests",
+  "arguments": {
+    "filePath": "./network_analysis.json",
+    "includeHeaders": true,
+    "includeBody": false,
+    "filterUrl": ".*api.*"
+  }
+}
+```
 
 ## Examples
 
@@ -347,13 +423,18 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ### v0.2.0
 
-- **NEW**: JavaScript files fetching functionality
-  - Fetch external, inline, and dynamic JavaScript files
-  - Support for URL filtering and directory structure preservation
-  - Generate manifest file with download summary
-  - Comprehensive error handling and file organization
-- Enhanced file operations with better structure preservation
-- Improved documentation and usage examples
+- **🔍 NEW**: Advanced XSS Vulnerability Scanning
+  - Interactive XSS scanner with automatic PoC testing
+  - Comprehensive detection across scripts, attributes, URLs, and forms
+  - Real-time alert detection and vulnerability confirmation
+  - Detailed JSON reports with severity levels
+- **📁 NEW**: JavaScript Files Analysis & Fetching
+  - Complete JavaScript file downloading (external, inline, dynamic)
+  - Smart directory structure preservation from URLs
+  - Manifest generation with detailed metadata
+  - URL filtering and Performance API integration
+- **🔒 Enhanced**: Security-focused features and documentation
+- **📚 Improved**: Comprehensive usage examples and security use cases
 
 ### v0.1.0
 
