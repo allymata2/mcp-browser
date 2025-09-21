@@ -332,6 +332,24 @@ class MCPBrowserServer {
               outputFile: { type: "string", description: "Optional file to save scan results" }
             }
           }
+        },
+        {
+          name: "browser_fetch_javascript_files",
+          description: "Fetch and download all JavaScript files loaded by the web application",
+          inputSchema: {
+            type: "object",
+            properties: {
+              sessionId: { type: "string", default: "default" },
+              downloadPath: { type: "string", description: "Directory to save JavaScript files" },
+              includeInlineScripts: { type: "boolean", description: "Include inline scripts from HTML", default: true },
+              includeExternalScripts: { type: "boolean", description: "Include external JavaScript files", default: true },
+              includeDynamicScripts: { type: "boolean", description: "Include dynamically loaded scripts", default: true },
+              filterUrl: { type: "string", description: "Optional URL filter (regex pattern)" },
+              preserveStructure: { type: "boolean", description: "Preserve directory structure from URLs", default: true },
+              generateManifest: { type: "boolean", description: "Generate manifest file with all downloaded files", default: true }
+            },
+            required: ["downloadPath"]
+          }
         }
       ],
     }));
@@ -375,6 +393,8 @@ class MCPBrowserServer {
             return await this.scanXSS(request.params.arguments as Parameters<typeof this.scanXSS>[0]);
           case "browser_interactive_xss_scan":
             return await this.interactiveXSSScan(request.params.arguments as Parameters<typeof this.interactiveXSSScan>[0]);
+          case "browser_fetch_javascript_files":
+            return await this.fetchJavaScriptFiles(request.params.arguments as Parameters<typeof this.fetchJavaScriptFiles>[0]);
           default:
             throw new Error(`Unknown tool: ${request.params.name}`);
         }
@@ -2004,6 +2024,250 @@ class MCPBrowserServer {
       testResult.alertDetected = false;
       testResult.testMethod = 'Error during testing';
       return testResult;
+    }
+  }
+
+  private async fetchJavaScriptFiles(args: {
+    sessionId?: string;
+    downloadPath: string;
+    includeInlineScripts?: boolean;
+    includeExternalScripts?: boolean;
+    includeDynamicScripts?: boolean;
+    filterUrl?: string;
+    preserveStructure?: boolean;
+    generateManifest?: boolean;
+  }) {
+    const {
+      sessionId = 'default',
+      downloadPath,
+      includeInlineScripts = true,
+      includeExternalScripts = true,
+      includeDynamicScripts = true,
+      filterUrl,
+      preserveStructure = true,
+      generateManifest = true
+    } = args;
+
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
+
+    const absolutePath = path.resolve(downloadPath);
+    await fs.mkdir(absolutePath, { recursive: true });
+
+    const downloadedFiles: Array<{
+      url: string;
+      localPath: string;
+      type: 'external' | 'inline' | 'dynamic';
+      size: number;
+      timestamp: string;
+    }> = [];
+
+    try {
+      // Get all JavaScript files and scripts from the page
+      const scriptData = await session.page.evaluate(({
+        includeInlineScripts,
+        includeExternalScripts,
+        includeDynamicScripts,
+        filterUrl
+      }: {
+        includeInlineScripts: boolean;
+        includeExternalScripts: boolean;
+        includeDynamicScripts: boolean;
+        filterUrl?: string;
+      }) => {
+        const scripts: Array<{
+          url: string;
+          content: string;
+          type: 'external' | 'inline' | 'dynamic';
+          filename: string;
+        }> = [];
+
+        // Get external scripts
+        if (includeExternalScripts) {
+          const externalScripts = document.querySelectorAll('script[src]');
+          externalScripts.forEach((script, index) => {
+            const src = script.getAttribute('src');
+            if (src) {
+              // Apply URL filter if provided
+              if (filterUrl && !new RegExp(filterUrl).test(src)) {
+                return;
+              }
+
+              const url = new URL(src, window.location.href).href;
+              const filename = src.split('/').pop() || `script_${index}.js`;
+              
+              scripts.push({
+                url,
+                content: '', // Will be fetched separately
+                type: 'external',
+                filename
+              });
+            }
+          });
+        }
+
+        // Get inline scripts
+        if (includeInlineScripts) {
+          const inlineScripts = document.querySelectorAll('script:not([src])');
+          inlineScripts.forEach((script, index) => {
+            const content = script.textContent || '';
+            if (content.trim()) {
+              scripts.push({
+                url: window.location.href,
+                content,
+                type: 'inline',
+                filename: `inline_script_${index}.js`
+              });
+            }
+          });
+        }
+
+        // Get dynamically loaded scripts (from performance API)
+        if (includeDynamicScripts) {
+          const performanceEntries = performance.getEntriesByType('resource');
+          performanceEntries.forEach((entry: any) => {
+            if (entry.name && entry.name.endsWith('.js')) {
+              // Apply URL filter if provided
+              if (filterUrl && !new RegExp(filterUrl).test(entry.name)) {
+                return;
+              }
+
+              const filename = entry.name.split('/').pop() || 'dynamic_script.js';
+              
+              scripts.push({
+                url: entry.name,
+                content: '', // Will be fetched separately
+                type: 'dynamic',
+                filename
+              });
+            }
+          });
+        }
+
+        return scripts;
+      }, { includeInlineScripts, includeExternalScripts, includeDynamicScripts, filterUrl });
+
+      // Download external and dynamic scripts
+      for (const script of scriptData) {
+        try {
+          let content = script.content;
+          let localPath: string;
+
+          if (script.type === 'external' || script.type === 'dynamic') {
+            // Fetch external script content
+            const response = await session.page.goto(script.url, { waitUntil: 'networkidle' });
+            if (response && response.ok()) {
+              content = await response.text();
+            } else {
+              console.warn(`Failed to fetch script: ${script.url}`);
+              continue;
+            }
+          }
+
+          // Determine local file path
+          if (preserveStructure && script.type !== 'inline') {
+            const url = new URL(script.url);
+            const pathParts = url.pathname.split('/').filter(part => part);
+            const filename = pathParts.pop() || script.filename;
+            const dirPath = pathParts.join('/');
+            
+            if (dirPath) {
+              const fullDirPath = path.join(absolutePath, url.hostname, dirPath);
+              await fs.mkdir(fullDirPath, { recursive: true });
+              localPath = path.join(fullDirPath, filename);
+            } else {
+              localPath = path.join(absolutePath, url.hostname, filename);
+            }
+          } else {
+            localPath = path.join(absolutePath, script.filename);
+          }
+
+          // Save the script content
+          await fs.writeFile(localPath, content, 'utf8');
+          
+          downloadedFiles.push({
+            url: script.url,
+            localPath,
+            type: script.type,
+            size: content.length,
+            timestamp: new Date().toISOString()
+          });
+
+        } catch (error) {
+          console.error(`Error downloading script ${script.url}:`, error);
+        }
+      }
+
+      // Generate manifest file
+      if (generateManifest) {
+        const manifest = {
+          timestamp: new Date().toISOString(),
+          pageUrl: session.page.url(),
+          sessionId,
+          settings: {
+            includeInlineScripts,
+            includeExternalScripts,
+            includeDynamicScripts,
+            filterUrl,
+            preserveStructure
+          },
+          summary: {
+            totalFiles: downloadedFiles.length,
+            externalScripts: downloadedFiles.filter(f => f.type === 'external').length,
+            inlineScripts: downloadedFiles.filter(f => f.type === 'inline').length,
+            dynamicScripts: downloadedFiles.filter(f => f.type === 'dynamic').length,
+            totalSize: downloadedFiles.reduce((sum, f) => sum + f.size, 0)
+          },
+          files: downloadedFiles
+        };
+
+        const manifestPath = path.join(absolutePath, 'javascript_manifest.json');
+        await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              action: 'fetch_javascript_files',
+              sessionId,
+              downloadPath: absolutePath,
+              summary: {
+                totalFiles: downloadedFiles.length,
+                externalScripts: downloadedFiles.filter(f => f.type === 'external').length,
+                inlineScripts: downloadedFiles.filter(f => f.type === 'inline').length,
+                dynamicScripts: downloadedFiles.filter(f => f.type === 'dynamic').length,
+                totalSize: downloadedFiles.reduce((sum, f) => sum + f.size, 0)
+              },
+              files: downloadedFiles.map(f => ({
+                url: f.url,
+                localPath: f.localPath,
+                type: f.type,
+                size: f.size
+              })),
+              manifestGenerated: generateManifest
+            }, null, 2),
+          },
+        ],
+      };
+
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              success: false,
+              action: 'fetch_javascript_files',
+              error: error instanceof Error ? error.message : 'Unknown error',
+              sessionId
+            }, null, 2),
+          },
+        ],
+        isError: true,
+      };
     }
   }
 

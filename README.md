@@ -80,6 +80,7 @@ This creates the `dist/index.js` file that will be used by the MCP server.
 
 - `browser_download_file`: Download files from web pages
 - `browser_create_pdf`: Generate PDFs from web pages
+- `browser_fetch_javascript_files`: Fetch and download all JavaScript files loaded by the web application
 
 #### Network Control
 
@@ -211,6 +212,22 @@ Add the following to your MCP client configuration file:
   "arguments": {
     "device": "iPhone 12",
     "orientation": "portrait"
+  }
+}
+```
+
+### JavaScript Files Fetching
+
+```json
+{
+  "name": "browser_fetch_javascript_files",
+  "arguments": {
+    "downloadPath": "./downloaded_scripts",
+    "includeInlineScripts": true,
+    "includeExternalScripts": true,
+    "includeDynamicScripts": true,
+    "preserveStructure": true,
+    "generateManifest": true
   }
 }
 ```
