@@ -247,6 +247,8 @@ Deep analysis of JavaScript files to discover API endpoints:
 }
 ```
 
+**Note**: Both `jsFilesPath` and `outputPath` should use relative paths for MCP compatibility. The tool includes automatic fallback mechanisms for permission-restricted environments.
+
 ### Network Traffic Monitoring
 
 Monitor and analyze web application behavior:
@@ -344,6 +346,8 @@ Monitor and analyze web application behavior:
   }
 }
 ```
+
+**Note**: Use relative paths (starting with `./`) for better compatibility with MCP file system restrictions. The tool will automatically fallback to the current working directory if permission is denied.
 
 ## Development
 

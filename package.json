@@ -1,36 +1,36 @@
 {
-    "name": "mcp-browser",
-    "version": "0.3.0",
-    "description": "MCP server for headless browser automation with Playwright",
-    "main": "index.js",
-    "type": "module",
-    "scripts": {
-        "build": "tsc",
-        "start": "node dist/index.js",
-        "dev": "tsx index.ts",
-        "install-browsers": "npx playwright install"
-    },
-    "dependencies": {
-        "@modelcontextprotocol/sdk": "^0.5.0",
-        "playwright": "^1.40.0",
-        "@babel/parser": "^7.23.0",
-        "@babel/traverse": "^7.23.0",
-        "@babel/types": "^7.23.0",
-        "prettier": "^3.1.0",
-        "source-map": "^0.7.4",
-        "js-beautify": "^1.14.0"
-    },
-    "devDependencies": {
-        "@types/node": "^20.0.0",
-        "@typescript-eslint/eslint-plugin": "^8.38.0",
-        "@typescript-eslint/parser": "^8.38.0",
-        "eslint": "^9.32.0",
-        "tsx": "^4.0.0",
-        "typescript": "^5.0.0",
-        "@types/js-beautify": "^1.14.0",
-        "@types/babel__traverse": "^7.20.0"
-    },
-    "engines": {
-        "node": ">=18"
-    }
+  "name": "mcp-browser",
+  "version": "0.3.0",
+  "description": "MCP server for headless browser automation with Playwright",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx index.ts",
+    "install-browsers": "npx playwright install"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "playwright": "^1.40.0",
+    "@babel/parser": "^7.23.0",
+    "@babel/traverse": "^7.23.0",
+    "@babel/types": "^7.23.0",
+    "prettier": "^3.1.0",
+    "source-map": "^0.7.4",
+    "js-beautify": "^1.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.38.0",
+    "@typescript-eslint/parser": "^8.38.0",
+    "eslint": "^9.32.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "@types/js-beautify": "^1.14.0",
+    "@types/babel__traverse": "^7.20.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
 }

@@ -2079,8 +2079,16 @@ class MCPBrowserServer {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
 
-    const absolutePath = path.resolve(downloadPath);
-    await fs.mkdir(absolutePath, { recursive: true });
+    // Use relative path instead of absolute to avoid permission issues
+    const safePath = downloadPath.startsWith('/') ? downloadPath : path.join(process.cwd(), downloadPath);
+    try {
+      await fs.mkdir(safePath, { recursive: true });
+    } catch (error) {
+      // Fallback to current working directory if permission denied
+      const fallbackPath = path.join(process.cwd(), 'downloaded_scripts');
+      await fs.mkdir(fallbackPath, { recursive: true });
+      console.warn(`Permission denied for ${safePath}, using fallback: ${fallbackPath}`);
+    }
 
     const downloadedFiles: Array<{
       url: string;
@@ -2192,26 +2200,36 @@ class MCPBrowserServer {
             }
           }
 
-          // Determine local file path
-          if (preserveStructure && script.type !== 'inline') {
-            const url = new URL(script.url);
-            const pathParts = url.pathname.split('/').filter(part => part);
-            const filename = pathParts.pop() || script.filename;
-            const dirPath = pathParts.join('/');
+          // Determine local file path with safe directory handling
+          let basePath = safePath;
+          try {
+            if (preserveStructure && script.type !== 'inline') {
+              const url = new URL(script.url);
+              const pathParts = url.pathname.split('/').filter(part => part);
+              const filename = pathParts.pop() || script.filename;
+              const dirPath = pathParts.join('/');
 
-            if (dirPath) {
-              const fullDirPath = path.join(absolutePath, url.hostname, dirPath);
-              await fs.mkdir(fullDirPath, { recursive: true });
-              localPath = path.join(fullDirPath, filename);
+              if (dirPath) {
+                const fullDirPath = path.join(basePath, url.hostname, dirPath);
+                await fs.mkdir(fullDirPath, { recursive: true });
+                localPath = path.join(fullDirPath, filename);
+              } else {
+                localPath = path.join(basePath, url.hostname, filename);
+              }
             } else {
-              localPath = path.join(absolutePath, url.hostname, filename);
+              localPath = path.join(basePath, script.filename);
             }
-          } else {
-            localPath = path.join(absolutePath, script.filename);
-          }
 
-          // Save the script content
-          await fs.writeFile(localPath, content, 'utf8');
+            // Save the script content
+            await fs.writeFile(localPath, content, 'utf8');
+          } catch (writeError) {
+            // Fallback to simple filename if directory creation fails
+            const fallbackPath = path.join(process.cwd(), 'downloaded_scripts');
+            await fs.mkdir(fallbackPath, { recursive: true });
+            localPath = path.join(fallbackPath, script.filename);
+            await fs.writeFile(localPath, content, 'utf8');
+            console.warn(`Permission denied for structured path, using fallback: ${localPath}`);
+          }
 
           downloadedFiles.push({
             url: script.url,
@@ -2249,8 +2267,16 @@ class MCPBrowserServer {
           files: downloadedFiles
         };
 
-        const manifestPath = path.join(absolutePath, 'javascript_manifest.json');
-        await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+        try {
+          const manifestPath = path.join(safePath, 'javascript_manifest.json');
+          await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+        } catch (manifestError) {
+          // Fallback to current working directory
+          const fallbackManifestPath = path.join(process.cwd(), 'downloaded_scripts', 'javascript_manifest.json');
+          await fs.mkdir(path.dirname(fallbackManifestPath), { recursive: true });
+          await fs.writeFile(fallbackManifestPath, JSON.stringify(manifest, null, 2));
+          console.warn(`Permission denied for manifest path, using fallback: ${fallbackManifestPath}`);
+        }
       }
 
       return {
@@ -2261,7 +2287,7 @@ class MCPBrowserServer {
               success: true,
               action: 'fetch_javascript_files',
               sessionId,
-              downloadPath: absolutePath,
+              downloadPath: safePath,
               summary: {
                 totalFiles: downloadedFiles.length,
                 externalScripts: downloadedFiles.filter(f => f.type === 'external').length,
@@ -2327,8 +2353,16 @@ class MCPBrowserServer {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
 
-    const absoluteOutputPath = path.resolve(outputPath);
-    await fs.mkdir(absoluteOutputPath, { recursive: true });
+    // Use safe path handling for API analysis output
+    const safeOutputPath = outputPath.startsWith('/') ? outputPath : path.join(process.cwd(), outputPath);
+    try {
+      await fs.mkdir(safeOutputPath, { recursive: true });
+    } catch (error) {
+      // Fallback to current working directory if permission denied
+      const fallbackOutputPath = path.join(process.cwd(), 'api_analysis_results');
+      await fs.mkdir(fallbackOutputPath, { recursive: true });
+      console.warn(`Permission denied for ${safeOutputPath}, using fallback: ${fallbackOutputPath}`);
+    }
 
     const analysisResults = {
       timestamp: new Date().toISOString(),
@@ -2381,15 +2415,15 @@ class MCPBrowserServer {
           if (!ast) continue;
 
           // Step 4: Detect network calls
-          const networkCalls = detectNetworkCalls ? 
+          const networkCalls = detectNetworkCalls ?
             await this.detectNetworkCalls(ast, normalizedContent, relativePath, contextLines) : [];
 
           // Step 5: Extract metadata
-          const metadata = extractMetadata ? 
+          const metadata = extractMetadata ?
             await this.extractNetworkCallMetadata(networkCalls) : [];
 
           // Step 6: Generate request specs
-          const requestSpecs = generateRequestSpecs ? 
+          const requestSpecs = generateRequestSpecs ?
             await this.generateRequestSpecs(metadata) : [];
 
           analysisResults.files.push({
@@ -2418,34 +2452,65 @@ class MCPBrowserServer {
       // Step 7: Validate endpoints if requested
       if (validateEndpoints && analysisResults.requestSpecs.length > 0) {
         analysisResults.requestSpecs = await this.validateEndpoints(
-          analysisResults.requestSpecs, 
+          analysisResults.requestSpecs,
           session
         );
       }
 
-      // Save results
-      const resultsPath = path.join(absoluteOutputPath, 'api_analysis_results.json');
-      await fs.writeFile(resultsPath, JSON.stringify(analysisResults, null, 2));
+      // Save results with safe path handling
+      let actualOutputPath = safeOutputPath;
+      try {
+        const resultsPath = path.join(safeOutputPath, 'api_analysis_results.json');
+        await fs.writeFile(resultsPath, JSON.stringify(analysisResults, null, 2));
 
-      // Generate individual files
-      if (analysisResults.networkCalls.length > 0) {
-        const networkCallsPath = path.join(absoluteOutputPath, 'network_calls.json');
-        await fs.writeFile(networkCallsPath, JSON.stringify(analysisResults.networkCalls, null, 2));
-      }
+        // Generate individual files
+        if (analysisResults.networkCalls.length > 0) {
+          const networkCallsPath = path.join(safeOutputPath, 'network_calls.json');
+          await fs.writeFile(networkCallsPath, JSON.stringify(analysisResults.networkCalls, null, 2));
+        }
 
-      if (analysisResults.requestSpecs.length > 0) {
-        const specsPath = path.join(absoluteOutputPath, 'request_specs.json');
-        await fs.writeFile(specsPath, JSON.stringify(analysisResults.requestSpecs, null, 2));
+        if (analysisResults.requestSpecs.length > 0) {
+          const specsPath = path.join(safeOutputPath, 'request_specs.json');
+          await fs.writeFile(specsPath, JSON.stringify(analysisResults.requestSpecs, null, 2));
 
-        // Generate cURL examples
-        const curlExamples = this.generateCurlExamples(analysisResults.requestSpecs);
-        const curlPath = path.join(absoluteOutputPath, 'curl_examples.sh');
-        await fs.writeFile(curlPath, curlExamples);
+          // Generate cURL examples
+          const curlExamples = this.generateCurlExamples(analysisResults.requestSpecs);
+          const curlPath = path.join(safeOutputPath, 'curl_examples.sh');
+          await fs.writeFile(curlPath, curlExamples);
 
-        // Generate HTTPie examples
-        const httpieExamples = this.generateHttpieExamples(analysisResults.requestSpecs);
-        const httpiePath = path.join(absoluteOutputPath, 'httpie_examples.txt');
-        await fs.writeFile(httpiePath, httpieExamples);
+          // Generate HTTPie examples
+          const httpieExamples = this.generateHttpieExamples(analysisResults.requestSpecs);
+          const httpiePath = path.join(safeOutputPath, 'httpie_examples.txt');
+          await fs.writeFile(httpiePath, httpieExamples);
+        }
+      } catch (writeError) {
+        // Fallback to current working directory
+        const fallbackOutputPath = path.join(process.cwd(), 'api_analysis_results');
+        await fs.mkdir(fallbackOutputPath, { recursive: true });
+        actualOutputPath = fallbackOutputPath;
+        
+        const resultsPath = path.join(fallbackOutputPath, 'api_analysis_results.json');
+        await fs.writeFile(resultsPath, JSON.stringify(analysisResults, null, 2));
+
+        if (analysisResults.networkCalls.length > 0) {
+          const networkCallsPath = path.join(fallbackOutputPath, 'network_calls.json');
+          await fs.writeFile(networkCallsPath, JSON.stringify(analysisResults.networkCalls, null, 2));
+        }
+
+        if (analysisResults.requestSpecs.length > 0) {
+          const specsPath = path.join(fallbackOutputPath, 'request_specs.json');
+          await fs.writeFile(specsPath, JSON.stringify(analysisResults.requestSpecs, null, 2));
+
+          const curlExamples = this.generateCurlExamples(analysisResults.requestSpecs);
+          const curlPath = path.join(fallbackOutputPath, 'curl_examples.sh');
+          await fs.writeFile(curlPath, curlExamples);
+
+          const httpieExamples = this.generateHttpieExamples(analysisResults.requestSpecs);
+          const httpiePath = path.join(fallbackOutputPath, 'httpie_examples.txt');
+          await fs.writeFile(httpiePath, httpieExamples);
+        }
+        
+        console.warn(`Permission denied for ${safeOutputPath}, using fallback: ${fallbackOutputPath}`);
       }
 
       return {
@@ -2456,7 +2521,7 @@ class MCPBrowserServer {
               success: true,
               action: 'analyze_javascript_api_endpoints',
               sessionId,
-              outputPath: absoluteOutputPath,
+              outputPath: actualOutputPath,
               summary: analysisResults.summary,
               files: {
                 analysisResults: 'api_analysis_results.json',
@@ -2553,11 +2618,11 @@ class MCPBrowserServer {
       if (!sourceMapMatch) return content;
 
       const sourceMapPath = path.join(path.dirname(filePath), sourceMapMatch[1]);
-      
+
       try {
         const sourceMapContent = await fs.readFile(sourceMapPath, 'utf8');
         const sourceMap = JSON.parse(sourceMapContent);
-        
+
         // Apply source map transformations
         // This is a simplified implementation
         return content;
@@ -2604,7 +2669,7 @@ class MCPBrowserServer {
     traverse(ast, {
       CallExpression(path: any) {
         const { node } = path;
-        
+
         // Detect fetch calls
         if (t.isIdentifier(node.callee) && node.callee.name === 'fetch') {
           const callInfo = self.extractCallInfo(node, path, lines, contextLines, 'fetch');
@@ -2671,7 +2736,7 @@ class MCPBrowserServer {
 
     const startLine = loc.start.line - 1;
     const endLine = loc.end.line - 1;
-    
+
     // Extract context around the call
     const contextStart = Math.max(0, startLine - contextLines);
     const contextEnd = Math.min(lines.length - 1, endLine + contextLines);
@@ -2841,52 +2906,52 @@ class MCPBrowserServer {
 
   private generateCurlExamples(requestSpecs: any[]): string {
     let curlExamples = '#!/bin/bash\n# Generated cURL examples for discovered API endpoints\n\n';
-    
+
     for (const spec of requestSpecs) {
       curlExamples += `# ${spec.source.file}:${spec.source.line}\n`;
       curlExamples += `curl -X ${spec.method} \\\n`;
       curlExamples += `  "${spec.url}" \\\n`;
-      
+
       for (const [key, value] of Object.entries(spec.headers)) {
         curlExamples += `  -H "${key}: ${value}" \\\n`;
       }
-      
+
       if (spec.auth && spec.auth.type === 'bearer') {
         curlExamples += `  -H "Authorization: Bearer \${TOKEN}" \\\n`;
       }
-      
+
       if (spec.body) {
         curlExamples += `  -d '${JSON.stringify(spec.body)}' \\\n`;
       }
-      
+
       curlExamples += `  --verbose\n\n`;
     }
-    
+
     return curlExamples;
   }
 
   private generateHttpieExamples(requestSpecs: any[]): string {
     let httpieExamples = '# Generated HTTPie examples for discovered API endpoints\n\n';
-    
+
     for (const spec of requestSpecs) {
       httpieExamples += `# ${spec.source.file}:${spec.source.line}\n`;
       httpieExamples += `http ${spec.method} "${spec.url}"`;
-      
+
       for (const [key, value] of Object.entries(spec.headers)) {
         httpieExamples += ` "${key}:${value}"`;
       }
-      
+
       if (spec.auth && spec.auth.type === 'bearer') {
         httpieExamples += ` "Authorization:Bearer \${TOKEN}"`;
       }
-      
+
       if (spec.body) {
         httpieExamples += ` <<< '${JSON.stringify(spec.body)}'`;
       }
-      
+
       httpieExamples += '\n\n';
     }
-    
+
     return httpieExamples;
   }
 
