@@ -1,6 +1,6 @@
 {
     "name": "mcp-browser",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "MCP server for headless browser automation with Playwright",
     "main": "index.js",
     "type": "module",

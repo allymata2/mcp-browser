@@ -345,6 +345,16 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Changelog
 
+### v0.2.0
+
+- **NEW**: JavaScript files fetching functionality
+  - Fetch external, inline, and dynamic JavaScript files
+  - Support for URL filtering and directory structure preservation
+  - Generate manifest file with download summary
+  - Comprehensive error handling and file organization
+- Enhanced file operations with better structure preservation
+- Improved documentation and usage examples
+
 ### v0.1.0
 
 - Initial release

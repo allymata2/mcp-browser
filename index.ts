@@ -2095,7 +2095,7 @@ class MCPBrowserServer {
 
               const url = new URL(src, window.location.href).href;
               const filename = src.split('/').pop() || `script_${index}.js`;
-              
+
               scripts.push({
                 url,
                 content: '', // Will be fetched separately
@@ -2133,7 +2133,7 @@ class MCPBrowserServer {
               }
 
               const filename = entry.name.split('/').pop() || 'dynamic_script.js';
-              
+
               scripts.push({
                 url: entry.name,
                 content: '', // Will be fetched separately
@@ -2170,7 +2170,7 @@ class MCPBrowserServer {
             const pathParts = url.pathname.split('/').filter(part => part);
             const filename = pathParts.pop() || script.filename;
             const dirPath = pathParts.join('/');
-            
+
             if (dirPath) {
               const fullDirPath = path.join(absolutePath, url.hostname, dirPath);
               await fs.mkdir(fullDirPath, { recursive: true });
@@ -2184,7 +2184,7 @@ class MCPBrowserServer {
 
           // Save the script content
           await fs.writeFile(localPath, content, 'utf8');
-          
+
           downloadedFiles.push({
             url: script.url,
             localPath,
