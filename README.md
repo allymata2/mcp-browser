@@ -23,7 +23,7 @@ A Model Context Protocol (MCP) server that provides headless browser automation 
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/mcp-browser.git
+git clone https://github.com/badchars/mcp-browser.git
 cd mcp-browser
 ```
 
@@ -320,7 +320,7 @@ Non-Commercial License - see [LICENSE](LICENSE) file for details.
 
 ## Support
 
-For issues and questions, please open an issue on the [GitHub repository](https://github.com/yourusername/mcp-browser/issues).
+For issues and questions, please open an issue on the [GitHub repository](https://github.com/badchars/mcp-browser/issues).
 
 ## Contributing
 
