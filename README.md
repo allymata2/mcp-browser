@@ -12,6 +12,7 @@ A powerful Model Context Protocol (MCP) server that provides advanced browser au
 ## 🚀 Key Features
 
 ### 🔍 **Security Analysis & XSS Scanning**
+
 - **Interactive XSS Scanner**: Automatic detection and testing of XSS vulnerabilities
 - **Comprehensive XSS Detection**: Scans inline scripts, external scripts, HTML attributes, URL parameters, and form inputs
 - **Proof of Concept Generation**: Automatic PoC HTTP requests for confirmed vulnerabilities
@@ -19,6 +20,7 @@ A powerful Model Context Protocol (MCP) server that provides advanced browser au
 - **Detailed Vulnerability Reports**: JSON reports with severity levels and remediation suggestions
 
 ### 📁 **JavaScript Files Analysis**
+
 - **Complete JS Fetching**: Download all JavaScript files (external, inline, dynamic)
 - **Smart File Organization**: Preserve directory structure from URLs
 - **Manifest Generation**: Detailed JSON manifest with file metadata
@@ -26,6 +28,7 @@ A powerful Model Context Protocol (MCP) server that provides advanced browser au
 - **Performance API Integration**: Detect dynamically loaded scripts
 
 ### 🌐 **Advanced Browser Automation**
+
 - **Multi-browser Support**: Chromium, Firefox, and WebKit browsers
 - **Session Management**: Multiple browser sessions with unique IDs
 - **Navigation**: Navigate to URLs with configurable wait conditions
@@ -175,6 +178,7 @@ Add the following to your MCP client configuration file:
 ## 🔒 Security Analysis Use Cases
 
 ### XSS Vulnerability Scanning
+
 Perfect for penetration testers and security researchers:
 
 ```json
@@ -194,6 +198,7 @@ Perfect for penetration testers and security researchers:
 ```
 
 ### JavaScript Code Analysis
+
 Ideal for reverse engineering and code review:
 
 ```json
@@ -212,6 +217,7 @@ Ideal for reverse engineering and code review:
 ```
 
 ### Network Traffic Monitoring
+
 Monitor and analyze web application behavior:
 
 ```json
