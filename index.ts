@@ -10,7 +10,8 @@ import { chromium, firefox, webkit, Browser, Page, BrowserContext } from 'playwr
 import { promises as fs } from 'fs';
 import path from 'path';
 import { parse } from '@babel/parser';
-import traverse from '@babel/traverse';
+import * as babelTraverse from '@babel/traverse';
+const traverse = (babelTraverse as any).default || babelTraverse;
 import * as t from '@babel/types';
 import prettier from 'prettier';
 import { SourceMapConsumer } from 'source-map';
@@ -376,6 +377,26 @@ class MCPBrowserServer {
             },
             required: ["jsFilesPath", "outputPath"]
           }
+        },
+        {
+          name: "browser_test_endpoints_via_proxy",
+          description: "Test discovered API endpoints through a proxy server",
+          inputSchema: {
+            type: "object",
+            properties: {
+              sessionId: { type: "string", default: "default" },
+              endpointsPath: { type: "string", description: "Path to API endpoints JSON file from analysis" },
+              proxyHost: { type: "string", description: "Proxy host (default: localhost)", default: "localhost" },
+              proxyPort: { type: "number", description: "Proxy port (default: 8080)", default: 8080 },
+              targetHost: { type: "string", description: "Target host to test endpoints against" },
+              outputPath: { type: "string", description: "Directory to save test results" },
+              maxConcurrent: { type: "number", description: "Maximum concurrent requests", default: 5 },
+              timeout: { type: "number", description: "Request timeout in milliseconds", default: 10000 },
+              includeHeaders: { type: "boolean", description: "Include custom headers in requests", default: true },
+              testMethods: { type: "array", items: { type: "string" }, description: "HTTP methods to test", default: ["GET", "POST", "PUT", "DELETE"] }
+            },
+            required: ["endpointsPath", "targetHost", "outputPath"]
+          }
         }
       ],
     }));
@@ -423,6 +444,8 @@ class MCPBrowserServer {
             return await this.fetchJavaScriptFiles(request.params.arguments as Parameters<typeof this.fetchJavaScriptFiles>[0]);
           case "browser_analyze_javascript_api_endpoints":
             return await this.analyzeJavaScriptAPIEndpoints(request.params.arguments as Parameters<typeof this.analyzeJavaScriptAPIEndpoints>[0]);
+          case "browser_test_endpoints_via_proxy":
+            return await this.testEndpointsViaProxy(request.params.arguments as Parameters<typeof this.testEndpointsViaProxy>[0]);
           default:
             throw new Error(`Unknown tool: ${request.params.name}`);
         }
@@ -2488,7 +2511,7 @@ class MCPBrowserServer {
         const fallbackOutputPath = path.join(process.cwd(), 'api_analysis_results');
         await fs.mkdir(fallbackOutputPath, { recursive: true });
         actualOutputPath = fallbackOutputPath;
-        
+
         const resultsPath = path.join(fallbackOutputPath, 'api_analysis_results.json');
         await fs.writeFile(resultsPath, JSON.stringify(analysisResults, null, 2));
 
@@ -2509,7 +2532,7 @@ class MCPBrowserServer {
           const httpiePath = path.join(fallbackOutputPath, 'httpie_examples.txt');
           await fs.writeFile(httpiePath, httpieExamples);
         }
-        
+
         console.warn(`Permission denied for ${safeOutputPath}, using fallback: ${fallbackOutputPath}`);
       }
 
@@ -2953,6 +2976,256 @@ class MCPBrowserServer {
     }
 
     return httpieExamples;
+  }
+
+  private async testEndpointsViaProxy(params: {
+    sessionId?: string;
+    endpointsPath: string;
+    proxyHost?: string;
+    proxyPort?: number;
+    targetHost: string;
+    outputPath: string;
+    maxConcurrent?: number;
+    timeout?: number;
+    includeHeaders?: boolean;
+    testMethods?: string[];
+  }) {
+    const {
+      sessionId = "default",
+      endpointsPath,
+      proxyHost = "localhost",
+      proxyPort = 8080,
+      targetHost,
+      outputPath,
+      maxConcurrent = 5,
+      timeout = 10000,
+      includeHeaders = true,
+      testMethods = ["GET", "POST", "PUT", "DELETE"]
+    } = params;
+
+    try {
+      console.log(`🔍 Testing endpoints via proxy ${proxyHost}:${proxyPort}`);
+
+      // Read endpoints from analysis results
+      const endpointsData = await fs.readFile(endpointsPath, 'utf8');
+      const endpoints = JSON.parse(endpointsData);
+
+      if (!Array.isArray(endpoints)) {
+        throw new Error('Invalid endpoints file format');
+      }
+
+      // Create output directory
+      const safeOutputPath = outputPath.startsWith('/') ? outputPath : path.join(process.cwd(), outputPath);
+      try {
+        await fs.mkdir(safeOutputPath, { recursive: true });
+      } catch (error) {
+        const fallbackOutputPath = path.join(process.cwd(), 'proxy_test_results');
+        await fs.mkdir(fallbackOutputPath, { recursive: true });
+        console.warn(`Permission denied for ${safeOutputPath}, using fallback: ${fallbackOutputPath}`);
+      }
+
+      const results = {
+        timestamp: new Date().toISOString(),
+        proxy: { host: proxyHost, port: proxyPort },
+        targetHost,
+        summary: {
+          totalEndpoints: endpoints.length,
+          testedEndpoints: 0,
+          successfulRequests: 0,
+          failedRequests: 0,
+          timeoutRequests: 0
+        },
+        results: [] as any[]
+      };
+
+      // Test each endpoint
+      const semaphore = new Array(maxConcurrent).fill(null);
+      const testPromises = endpoints.map(async (endpoint, index) => {
+        await new Promise(resolve => {
+          const availableSlot = semaphore.findIndex(slot => slot === null);
+          if (availableSlot !== -1) {
+            semaphore[availableSlot] = index;
+            resolve(undefined);
+          } else {
+            const checkSlot = () => {
+              const availableSlot = semaphore.findIndex(slot => slot === null);
+              if (availableSlot !== -1) {
+                semaphore[availableSlot] = index;
+                resolve(undefined);
+              } else {
+                setTimeout(checkSlot, 100);
+              }
+            };
+            checkSlot();
+          }
+        });
+
+        try {
+          const testResult = await this.testSingleEndpoint(endpoint, targetHost, proxyHost, proxyPort, timeout, includeHeaders, testMethods);
+          results.results.push(testResult);
+          results.summary.testedEndpoints++;
+
+          if (testResult.success) {
+            results.summary.successfulRequests++;
+          } else if (testResult.timeout) {
+            results.summary.timeoutRequests++;
+          } else {
+            results.summary.failedRequests++;
+          }
+        } catch (error) {
+          results.results.push({
+            endpoint: endpoint.url,
+            method: endpoint.method,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date().toISOString()
+          });
+          results.summary.failedRequests++;
+        } finally {
+          const slotIndex = semaphore.findIndex(slot => slot === index);
+          if (slotIndex !== -1) {
+            semaphore[slotIndex] = null;
+          }
+        }
+      });
+
+      await Promise.all(testPromises);
+
+      // Save results
+      const resultsPath = path.join(safeOutputPath, 'proxy_test_results.json');
+      await fs.writeFile(resultsPath, JSON.stringify(results, null, 2));
+
+      // Generate summary report
+      const summaryPath = path.join(safeOutputPath, 'proxy_test_summary.txt');
+      const summary = this.generateProxyTestSummary(results);
+      await fs.writeFile(summaryPath, summary);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `✅ Proxy endpoint testing completed!\n\n📊 Results:\n- Total Endpoints: ${results.summary.totalEndpoints}\n- Tested: ${results.summary.testedEndpoints}\n- Successful: ${results.summary.successfulRequests}\n- Failed: ${results.summary.failedRequests}\n- Timeouts: ${results.summary.timeoutRequests}\n\n📁 Results saved to: ${safeOutputPath}\n\n🎯 Proxy: ${proxyHost}:${proxyPort}\n🌐 Target: ${targetHost}`
+          }
+        ]
+      };
+
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `❌ Proxy endpoint testing failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+
+  private async testSingleEndpoint(endpoint: any, targetHost: string, proxyHost: string, proxyPort: number, timeout: number, includeHeaders: boolean, testMethods: string[]) {
+    const url = `http://${targetHost}${endpoint.url}`;
+    const method = endpoint.method || 'GET';
+
+    // Skip if method is not in test methods
+    if (!testMethods.includes(method)) {
+      return {
+        endpoint: endpoint.url,
+        method,
+        success: false,
+        skipped: true,
+        reason: `Method ${method} not in test methods`,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    const headers: Record<string, string> = {
+      'User-Agent': 'MCP-Browser-Proxy-Tester/1.0',
+      'Accept': 'application/json, text/plain, */*'
+    };
+
+    if (includeHeaders && endpoint.headers) {
+      Object.assign(headers, endpoint.headers);
+    }
+
+    const requestOptions = {
+      method,
+      headers,
+      timeout,
+      proxy: `http://${proxyHost}:${proxyPort}`,
+      body: endpoint.body ? JSON.stringify(endpoint.body) : undefined
+    };
+
+    try {
+      const startTime = Date.now();
+      const response = await fetch(url, requestOptions);
+      const endTime = Date.now();
+      const responseTime = endTime - startTime;
+
+      const responseText = await response.text();
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        responseData = responseText;
+      }
+
+      return {
+        endpoint: endpoint.url,
+        method,
+        success: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        responseTime,
+        responseSize: responseText.length,
+        responseData: responseData,
+        headers: Object.fromEntries(response.headers.entries()),
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      const isTimeout = error instanceof Error && error.message.includes('timeout');
+      return {
+        endpoint: endpoint.url,
+        method,
+        success: false,
+        timeout: isTimeout,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  private generateProxyTestSummary(results: any): string {
+    let summary = `# Proxy Endpoint Test Summary\n\n`;
+    summary += `**Generated:** ${results.timestamp}\n\n`;
+    summary += `## Test Configuration\n\n`;
+    summary += `- **Proxy:** ${results.proxy.host}:${results.proxy.port}\n`;
+    summary += `- **Target Host:** ${results.targetHost}\n\n`;
+    summary += `## Results Summary\n\n`;
+    summary += `- **Total Endpoints:** ${results.summary.totalEndpoints}\n`;
+    summary += `- **Tested:** ${results.summary.testedEndpoints}\n`;
+    summary += `- **Successful:** ${results.summary.successfulRequests}\n`;
+    summary += `- **Failed:** ${results.summary.failedRequests}\n`;
+    summary += `- **Timeouts:** ${results.summary.timeoutRequests}\n\n`;
+
+    if (results.results.length > 0) {
+      summary += `## Detailed Results\n\n`;
+      results.results.forEach((result: any, index: number) => {
+        summary += `### ${index + 1}. ${result.method} ${result.endpoint}\n`;
+        summary += `- **Status:** ${result.success ? '✅ Success' : '❌ Failed'}\n`;
+        if (result.status) {
+          summary += `- **HTTP Status:** ${result.status} ${result.statusText}\n`;
+        }
+        if (result.responseTime) {
+          summary += `- **Response Time:** ${result.responseTime}ms\n`;
+        }
+        if (result.error) {
+          summary += `- **Error:** ${result.error}\n`;
+        }
+        summary += `\n`;
+      });
+    }
+
+    return summary;
   }
 
   private async cleanup() {
