@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 
-import { promises as fs } from "fs";
-import path from "path";
-import { parse } from "@babel/parser";
-import * as babelTraverse from "@babel/traverse";
-import * as t from "@babel/types";
-
-const traverse = babelTraverse.default || babelTraverse;
+const { promises: fs } = require("fs");
+const path = require("path");
+const { parse } = require("@babel/parser");
+const traverse = require("@babel/traverse").default;
+const t = require("@babel/types");
 
 class TaintAnalyzer {
   constructor() {

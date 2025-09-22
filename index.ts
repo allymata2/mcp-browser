@@ -10,8 +10,7 @@ import { chromium, firefox, webkit, Browser, Page, BrowserContext } from 'playwr
 import { promises as fs } from 'fs';
 import path from 'path';
 import { parse } from '@babel/parser';
-import * as babelTraverse from '@babel/traverse';
-const traverse = (babelTraverse as any).default || babelTraverse;
+import traverse from '@babel/traverse';
 import * as t from '@babel/types';
 import prettier from 'prettier';
 import { SourceMapConsumer } from 'source-map';
